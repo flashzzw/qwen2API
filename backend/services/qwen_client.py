@@ -48,37 +48,14 @@ class QwenClient:
             import httpx
             from backend.services.auth_resolver import BASE_URL
             
-            headers = {
-                "Authorization": f"Bearer {acc.token}",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "application/json, text/plain, */*"
-            }
-            # 如果有 cookies，也一并带上
-            if acc.cookies:
-                headers["Cookie"] = acc.cookies
-
             async with httpx.AsyncClient(timeout=15, trust_env=False) as hc:
                 resp = await hc.get(
                     f"{BASE_URL}/api/v1/auths/",
-                    headers=headers,
+                    headers={"Authorization": f"Bearer {acc.token}"},
                 )
-                
             if resp.status_code != 200:
-                log.warning(f"[Verify] Account {acc.email} HTTP {resp.status_code}")
                 return False
-                
-            try:
-                data = resp.json()
-            except Exception as json_err:
-                log.warning(f"[Verify] Account {acc.email} returned non-JSON response (status {resp.status_code}): {resp.text[:100]}... Error: {json_err}")
-                return False
-                
-            is_valid = data.get("role") == "user"
-            
-            if not is_valid:
-                log.warning(f"[Verify] Account {acc.email} is NOT a valid user. Data: {data}")
-                
-            return is_valid
+            return resp.json().get("role") == "user"
         except Exception as e:
             log.warning(f"[Verify] Account {acc.email} HTTP error: {e}")
             return False

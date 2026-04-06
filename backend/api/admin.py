@@ -147,7 +147,7 @@ async def register_new_account(request: Request):
 
 @router.post("/verify", dependencies=[Depends(verify_admin)])
 async def verify_all_accounts(request: Request):
-    """验证所有账号的有效性"""
+    """验证所有账号的有效性 (完全复原单文件逻辑)"""
     from backend.core.account_pool import AccountPool
     from backend.services.qwen_client import QwenClient
     import logging
@@ -164,13 +164,9 @@ async def verify_all_accounts(request: Request):
             is_valid = await client.auth_resolver.refresh_token(acc)
             
         acc.valid = is_valid
-        if not is_valid:
-            pool.mark_invalid(acc)
-        else:
-            await pool.add(acc) # Save updated status
-            
         results.append({"email": acc.email, "valid": is_valid, "refreshed": not is_valid})
-            
+        
+    await pool.save() # 直接保存全部状态，不调用 mark_invalid 以免熔断影响测试
     return {"ok": True, "results": results}
 
 @router.post("/accounts/{email}/activate", dependencies=[Depends(verify_admin)])
@@ -203,7 +199,7 @@ async def activate_account(email: str, request: Request):
 
 @router.post("/accounts/{email}/verify", dependencies=[Depends(verify_admin)])
 async def verify_account(email: str, request: Request):
-    """单独验证某个账号的有效性"""
+    """单独验证某个账号的有效性 (完全复原单文件逻辑)"""
     from backend.services.qwen_client import QwenClient
     from backend.core.account_pool import AccountPool
     import logging
@@ -222,12 +218,9 @@ async def verify_account(email: str, request: Request):
         is_valid = await client.auth_resolver.refresh_token(acc)
         
     acc.valid = is_valid
-    if not is_valid:
-        pool.mark_invalid(acc)
-    else:
-        await pool.add(acc) # Save updated status
+    await pool.save() # 直接保存，不调用 mark_invalid 以免熔断影响正常测试
         
-    return {"ok": True, "valid": is_valid}
+    return {"email": acc.email, "valid": is_valid}
 
 @router.delete("/accounts/{email}", dependencies=[Depends(verify_admin)])
 async def delete_account(email: str, request: Request):

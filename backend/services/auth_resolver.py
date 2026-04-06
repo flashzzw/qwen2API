@@ -333,54 +333,40 @@ async def activate_account(acc: Account) -> bool:
     """Open mail.chatgpt.org.uk/{email} in browser, find the Qwen activation link,
     click it, then login to get a fresh token. Returns True on success."""
     log.info(f"[Activate] 开始激活 {acc.email}，打开邮箱页面...")
-    keywords = ("qwen", "verify", "activate", "confirm", "aliyun", "alibaba", "qwenlm", "active mail")
+    keywords = ("qwen", "verify", "activate", "confirm", "aliyun", "alibaba", "qwenlm")
     mail_url = f"{MAIL_BASE}/{acc.email}"
     try:
         async with _new_browser() as browser:
             page = await browser.new_page()
 
-            # Step 1: Open the inbox page
+            # Step 1: Open the inbox page — use networkidle to wait for SPA AJAX to complete
             log.info(f"[Activate] 打开收件箱: {mail_url}")
             try:
-                # 改用 domcontentloaded 极速加载，放弃等待所有网络请求（networkidle 太慢）
-                await page.goto(mail_url, wait_until="domcontentloaded", timeout=15000)
+                await page.goto(mail_url, wait_until="networkidle", timeout=30000)
             except Exception:
-                pass
-            
-            # 缩短强制等待时间，并强制点击页面上可能存在的刷新按钮以加速邮件获取
-            await asyncio.sleep(2)
-            try:
-                log.info("[Activate] 强制触发页面刷新动作以加速邮件显示...")
-                await page.evaluate('''() => {
-                    const refreshBtns = Array.from(document.querySelectorAll('button, a')).filter(el => 
-                        el.innerText.toLowerCase().includes('refresh') || 
-                        el.innerText.toLowerCase().includes('刷新')
-                    );
-                    if(refreshBtns.length > 0) { refreshBtns[0].click(); }
-                }''')
-                await asyncio.sleep(1)
-            except Exception:
-                pass
+                try:
+                    await page.goto(mail_url, wait_until="domcontentloaded", timeout=15000)
+                except Exception:
+                    pass
+            # Extra wait for SPA to render inbox content
+            await asyncio.sleep(6)
 
             # Step 2: Wait for email list to appear, then click the first email
-            log.info(f"[Activate] 等待收件箱加载并查找历史激活邮件...")
+            log.info(f"[Activate] 等待收件箱加载...")
             clicked_email = False
 
-            # Primary: confirmed GPTMail selector (直接找第一封，因为激活邮件有效期7天，旧的也能用)
+            # Primary: confirmed GPTMail selector
             for sel in ['#emailList li:first-child', '#emailList li', '[class*="EmailItem"]',
                         '[class*="email-item"]', '[class*="MailItem"]', '[class*="mail-item"]',
                         'table tbody tr:first-child', '[role="row"]:first-child']:
                 try:
-                    # 缩短选择器超时
-                    await page.wait_for_selector(sel, timeout=3000)
+                    await page.wait_for_selector(sel, timeout=10000)
                     el = await page.query_selector(sel)
                     if el:
-                        # 还原为单文件最原始的逻辑：只要找到了列表项，不管三七二十一先点进去再说
-                        # 不再做外层的 qwen 文本校验，以免因为页面层级复杂而漏判
                         await el.click()
-                        await asyncio.sleep(2)
+                        await asyncio.sleep(4)
                         clicked_email = True
-                        log.debug(f"[Activate] 点击邮件项 (复原单文件无条件点击策略): {sel}")
+                        log.debug(f"[Activate] 点击邮件项: {sel}")
                         break
                 except Exception:
                     pass
@@ -395,7 +381,7 @@ async def activate_account(acc: Account) -> bool:
                                 text = await el.inner_text()
                                 if any(kw in text.lower() for kw in keywords):
                                     await el.click()
-                                    await asyncio.sleep(1)
+                                    await asyncio.sleep(4)
                                     clicked_email = True
                                     log.debug(f"[Activate] 按关键词点击邮件项: {sel}")
                                     break
@@ -406,21 +392,9 @@ async def activate_account(acc: Account) -> bool:
                     except Exception:
                         pass
 
-            # 新增增强型兜底策略
-            if not clicked_email:
-                try:
-                    log.info("[Activate] 尝试通过增强型 JavaScript 选择器点击第一封邮件")
-                    await page.evaluate('''() => {
-                        const emails = document.querySelectorAll('li, tr, .mail-item, .email-item');
-                        if(emails.length > 0) { emails[0].click(); }
-                    }''')
-                    await asyncio.sleep(1)
-                except Exception as e:
-                    log.debug(f"[Activate] 增强型点击失败: {e}")
-
             # Step 3: Extract activation link — email body is inside #emailFrame iframe
             js_find_link = """() => {
-                const kws = ['qwen', 'verify', 'activate', 'confirm', 'aliyun', 'alibaba', 'qwenlm', 'active mail'];
+                const kws = ['qwen', 'verify', 'activate', 'confirm', 'aliyun', 'alibaba', 'qwenlm'];
                 const links = Array.from(document.querySelectorAll('a[href]'));
                 for (const a of links) {
                     const href = a.href || '';
@@ -454,20 +428,6 @@ async def activate_account(acc: Account) -> bool:
             # Fallback: search main page
             if not verify_link:
                 verify_link = await page.evaluate(js_find_link)
-
-            # 新增增强型提取策略（不修改上方原有代码）：
-            # 有时 GPTMail 会用 shadow DOM 渲染内容，直接读取 html 文本是最硬核的兜底
-            if not verify_link:
-                try:
-                    log.info("[Activate] 尝试通过全量 DOM 强制提取激活链接")
-                    page_html = await page.content()
-                    matches = re.findall(r'https?://[^\s"\'<>\\,\)]+', page_html)
-                    for m in matches:
-                        if any(kw in m.lower() for kw in keywords):
-                            verify_link = m
-                            break
-                except Exception as e:
-                    log.debug(f"[Activate] 全量 DOM 提取失败: {e}")
 
             if not verify_link:
                 log.warning(f"[Activate] {acc.email} 邮箱页面未找到激活链接，URL={page.url}")
@@ -515,14 +475,6 @@ async def activate_account(acc: Account) -> bool:
                 acc.token = token
                 acc.valid = True
                 acc.activation_pending = False
-                
-                # Extract fresh cookies
-                log.info("[Activate] 提取最新 cookies...")
-                all_cookies = await page.context.cookies()
-                cookie_str = "; ".join(f"{c.get('name','')}={c.get('value','')}" for c in all_cookies if "qwen" in c.get("domain", ""))
-                if cookie_str:
-                    acc.cookies = cookie_str
-                    
                 log.info(f"[Activate] {acc.email} 激活成功，token已更新")
                 return True
             log.warning(f"[Activate] {acc.email} 激活后未能获取token")
@@ -537,6 +489,7 @@ class AuthResolver:
         self.pool = pool
 
     async def refresh_token(self, acc: Account) -> bool:
+        """Re-login with email+password to get a fresh token. Returns True on success."""
         if not acc.email or not acc.password:
             log.warning(f"[Refresh] 账号 {acc.email} 无密码，无法刷新")
             return False
@@ -546,34 +499,32 @@ class AuthResolver:
             async with _new_browser() as browser:
                 page = await browser.new_page()
                 try:
-                    await page.goto("https://chat.qwen.ai/auth", wait_until="domcontentloaded", timeout=30000)
+                    await page.goto(f"{BASE_URL}/auth", wait_until="domcontentloaded", timeout=30000)
                 except Exception:
                     pass
                 await asyncio.sleep(3)
                 
-                # 填写邮箱密码
                 li_email = await page.query_selector('input[placeholder*="Email"]')
-                if li_email: await li_email.fill(acc.email)
+                if li_email:
+                    await li_email.fill(acc.email)
                 li_pwd = await page.query_selector('input[type="password"]')
-                if li_pwd: await li_pwd.fill(acc.password)
-                
-                # 提交
+                if li_pwd:
+                    await li_pwd.fill(acc.password)
                 li_btn = (await page.query_selector('button:has-text("Log in")') or
                           await page.query_selector('button[type="submit"]'))
-                if li_btn: await li_btn.click()
-                
+                if li_btn:
+                    await li_btn.click()
                 await asyncio.sleep(8)
-                
-                # 提取 LocalStorage Token
                 new_token = await page.evaluate("localStorage.getItem('token')")
                 if new_token and new_token != acc.token:
+                    old_prefix = acc.token[:20] if acc.token else "空"
                     acc.token = new_token
                     acc.valid = True
                     await self.pool.save()
-                    old_prefix = acc.token[:20] if acc.token else "空"
                     log.info(f"[Refresh] {acc.email} token 已更新 ({old_prefix}... → {new_token[:20]}...)")
                     return True
                 elif new_token == acc.token:
+                    # Token same but might still be valid — mark valid again
                     acc.valid = True
                     log.info(f"[Refresh] {acc.email} token 未变化，重新标记有效")
                     return True
@@ -582,4 +533,4 @@ class AuthResolver:
                     return False
         except Exception as e:
             log.error(f"[Refresh] {acc.email} 刷新异常: {e}")
-            return None
+            return False

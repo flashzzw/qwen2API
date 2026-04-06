@@ -13,6 +13,7 @@ router = APIRouter()
 
 @router.post("/messages")
 @router.post("/v1/messages")
+@router.post("/anthropic/v1/messages")
 async def anthropic_messages(request: Request):
     """
     Claude API 协议转换层 -> 转入 OpenAI/Qwen 统一处理内核

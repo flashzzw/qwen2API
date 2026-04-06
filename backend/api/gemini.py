@@ -10,6 +10,11 @@ from backend.core.config import resolve_model
 log = logging.getLogger("qwen2api.gemini")
 router = APIRouter()
 
+@router.post("/v1beta/models/{model}:generateContent")
+@router.post("/v1/models/{model}:generateContent")
+@router.post("/v1beta/models/{model}:streamGenerateContent")
+@router.post("/v1/models/{model}:streamGenerateContent")
+@router.post("/models/{model}:generateContent")
 @router.post("/models/{model}:streamGenerateContent")
 async def gemini_stream(model: str, request: Request):
     """

@@ -55,8 +55,8 @@ app.add_middleware(
 
 # 挂载路由
 app.include_router(v1_chat.router, tags=["OpenAI Compatible"])
-app.include_router(anthropic.router, prefix="/anthropic", tags=["Claude Compatible"])
-app.include_router(gemini.router, prefix="/v1beta", tags=["Gemini Compatible"])
+app.include_router(anthropic.router, tags=["Claude Compatible"])
+app.include_router(gemini.router, tags=["Gemini Compatible"])
 app.include_router(embeddings.router, tags=["Embeddings"])
 app.include_router(probes.router, tags=["Probes"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Dashboard Admin"])

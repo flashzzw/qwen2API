@@ -164,8 +164,10 @@ def build_prompt_with_tools(messages: list, tools: list) -> str:
         text = _extract_text(msg.get("content", ""),
                              user_tool_mode=(bool(tools) and role == "user"))
 
-        if role == "assistant" and not text and msg.get("tool_calls"):
+        if role == "assistant" and msg.get("tool_calls"):
             tc_parts = []
+            if text:
+                tc_parts.append(text)
             for tc in msg["tool_calls"]:
                 fn = tc.get("function", {})
                 name = fn.get("name", "")
@@ -177,7 +179,7 @@ def build_prompt_with_tools(messages: list, tools: list) -> str:
                 tc_parts.append(
                     f'##TOOL_CALL##\n{{"name": {json.dumps(name)}, "input": {json.dumps(args, ensure_ascii=False)}}}\n##END_CALL##'
                 )
-            text = "\n".join(tc_parts)
+            text = "\n\n".join(tc_parts)
 
         if tools and role == "assistant" and any(m in text for m in NEEDSREVIEW_MARKERS):
             msg_count += 1

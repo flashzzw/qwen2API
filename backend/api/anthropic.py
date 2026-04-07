@@ -196,6 +196,12 @@ async def anthropic_messages(request: Request):
                     await asyncio.sleep(0.5)
                     continue
 
+                # 暴露思考过程给客户端，帮助 LO 分析
+                thinking_text = "".join(thinking_chunks)
+                if thinking_text and tools:
+                    exposed_think = f"<think>\n{thinking_text}\n</think>\n\n"
+                    answer_text = exposed_think + answer_text
+
                 # Parse tools
                 from backend.services.tool_parser import parse_tool_calls
                 if tools:

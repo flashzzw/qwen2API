@@ -179,8 +179,11 @@ def parse_tool_calls(answer: str, tools: list):
         return blocks, "tool_use"
 
     # 5. 极端保底拦截：只要看到文本中含有明显意图，但正则全部失败，强制触发纠偏
-    if answer.strip() and tools:
-        lower_ans = answer.lower()
+    # 这里我们排除了只包含 <think> 的情况，因为我们要把 thinking 原样透传给用户看
+    answer_without_think = re.sub(r'<think>.*?</think>', '', answer, flags=re.DOTALL).strip()
+    
+    if answer_without_think and tools:
+        lower_ans = answer_without_think.lower()
         # 匹配明确的工具调用意图词
         
         found_intent = False
@@ -211,7 +214,9 @@ def parse_tool_calls(answer: str, tools: list):
     text_content = answer if answer.strip() else "[模型思考完毕，但未能按照要求输出✿ACTION✿工具调用。请重新调整提示词。]"
     
     # 既然模型死活不调用，又没法报错给用户，就强制触发一个空操作的AskUserQuestion或者抛错，让工作流中断
-    if not answer.strip():
+    # 既然现在我们已经把 thinking 拼接到 answer 里了，answer.strip() 就不为空了。
+    # 我们需要根据 answer_without_think 来判断它是否真正给出了回答。
+    if not answer_without_think:
         if "AskUserQuestion" in tool_names:
             log.warning("[ToolParse] 强制使用 AskUserQuestion 以阻断空循环。")
             return _make_tool_block("AskUserQuestion", {"questions": [{"question": "系统：大模型连续5次拒绝输出任何内容，可能已触发内置安全限制或死循环。建议：1. 简化你的报错日志；2. 直接告诉模型“修改文件代码”，不要让它分析。", "options": [{"label": "好的，我重试", "description": "明白了"}], "header": "模型装死拦截", "multiSelect": False}]})

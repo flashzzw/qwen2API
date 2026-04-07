@@ -12,7 +12,9 @@ __pycache__/
 
 # Data and Logs
 data/*.json
-logs/*.log
+logs/
+legacy/
+*legacy*.py
 
 # Tests and scripts
 test_*.py

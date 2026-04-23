@@ -312,6 +312,9 @@ ACCOUNTS_FILE=/workspace/data/accounts.json
 USERS_FILE=/workspace/data/users.json
 CONTEXT_CACHE_FILE=/workspace/data/context_cache.json
 UPLOADED_FILES_FILE=/workspace/data/uploaded_files.json
+MONGODB_URI=
+MONGODB_DB_NAME=qwen2api
+MONGODB_CONNECT_TIMEOUT_MS=5000
 ```
 
 **环境变量详细说明**：
@@ -328,6 +331,9 @@ UPLOADED_FILES_FILE=/workspace/data/uploaded_files.json
 | `REQUEST_JITTER_MIN_MS` | `0` | 请求抖动最小值 | 模拟真实用户行为时设置 `120` |
 | `REQUEST_JITTER_MAX_MS` | `0` | 请求抖动最大值 | 模拟真实用户行为时设置 `360` |
 | `RATE_LIMIT_BASE_COOLDOWN` | `600` | 限流冷却时间（秒） | 频繁限流时增加到 `1200` |
+| `MONGODB_URI` | 空 | 配置后启用 MongoDB Atlas 持久化 | 不配置则继续使用本地 JSON/文件 |
+| `MONGODB_DB_NAME` | `qwen2api` | Atlas 数据库名 | 多环境部署时可区分实例 |
+| `MONGODB_CONNECT_TIMEOUT_MS` | `5000` | Mongo 连接超时（毫秒） | 冷启动较慢时可略增 |
 
 **docker-compose.yml 配置说明**：
 
@@ -339,6 +345,20 @@ UPLOADED_FILES_FILE=/workspace/data/uploaded_files.json
 | `shm_size` | 浏览器共享内存 | 浏览器崩溃时改为 `"512m"` |
 | `environment.PORT` | 容器内服务端口 | 通常不需要改 |
 | `healthcheck` | 健康检查配置 | 保持默认即可 |
+
+### 免费 Render + Mongo Atlas 持久化
+
+如果你在 Render 免费层运行，且希望重启后保留账号、用户、API Key 与上传文件元数据，可以这样配：
+
+1. 在 Render 服务环境变量中设置 `MONGODB_URI`、`MONGODB_DB_NAME`。
+2. GitHub 仓库 Secrets 新增 `RENDER_HEALTHCHECK_URL=https://<你的服务>.onrender.com/healthz`。
+3. 启用仓库内 `.github/workflows/render-healthcheck.yml`，该工作流会每 10 分钟请求一次 `/healthz`。
+
+说明：
+
+- 配置了 `MONGODB_URI` 后，运行时状态会写入 Atlas；上传文件二进制与上下文生成文件会进入 GridFS。
+- 未配置 `MONGODB_URI` 时，仍然使用本地 JSON 与本地文件目录。
+- 如果配置了 `MONGODB_URI` 但 Atlas 不可达，服务会在启动阶段直接报错，不会静默回退到本地模式。
 
 #### 第四步：启动服务
 

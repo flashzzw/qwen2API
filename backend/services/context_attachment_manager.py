@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
+import time
 from typing import Any
 
 from backend.core.upstream_file_cache import UpstreamFileCacheEntry
@@ -63,22 +63,25 @@ async def prepare_context_attachments(*, app, payload: dict[str, Any], surface: 
             if getattr(attachment, "remote_ref", None):
                 upstream_files.append(attachment.remote_ref)
                 continue
-            if not attachment.local_path:
-                continue
+            raw = await file_store.read_bytes(attachment.file_id)
             local_meta = {
                 "id": attachment.file_id,
-                "path": attachment.local_path,
                 "filename": attachment.filename,
                 "content_type": attachment.content_type,
                 "sha256": attachment.sha256,
-                "created_at": __import__("time").time(),
+                "created_at": time.time(),
             }
-            ext = Path(attachment.filename).suffix.lstrip(".").lower()
+            ext = attachment.filename.rsplit(".", 1)[-1].lower() if "." in attachment.filename else ""
             cache_entry = await cache.get(session_key, acc.email, local_meta["sha256"], ext)
             if cache_entry is not None:
                 remote = cache_entry.remote_file_meta
             else:
-                remote = await uploader.upload_local_file(acc, local_meta)
+                remote = await uploader.upload_bytes(
+                    acc,
+                    filename=attachment.filename,
+                    content_type=attachment.content_type,
+                    raw=raw,
+                )
                 await cache.set(UpstreamFileCacheEntry(
                     session_key=session_key,
                     account_email=acc.email,
@@ -91,7 +94,7 @@ async def prepare_context_attachments(*, app, payload: dict[str, Any], surface: 
                 ))
             upstream_files.append(remote["remote_ref"])
             await affinity.add_uploaded_file(session_key, remote)
-            await file_store.delete_path(attachment.local_path)
+            await file_store.delete(attachment.file_id)
 
         if use_generated_context_files:
             for index, generated in enumerate(plan.generated_files, 1):
@@ -102,7 +105,13 @@ async def prepare_context_attachments(*, app, payload: dict[str, Any], surface: 
                 if cache_entry is not None:
                     remote = cache_entry.remote_file_meta
                 else:
-                    remote = await uploader.upload_local_file(acc, local_meta)
+                    raw = await file_store.read_bytes(local_meta["id"])
+                    remote = await uploader.upload_bytes(
+                        acc,
+                        filename=filename,
+                        content_type=generated.content_type,
+                        raw=raw,
+                    )
                     await cache.set(UpstreamFileCacheEntry(
                         session_key=session_key,
                         account_email=acc.email,
@@ -115,10 +124,12 @@ async def prepare_context_attachments(*, app, payload: dict[str, Any], surface: 
                     ))
                 upstream_files.append(remote["remote_ref"])
                 await affinity.add_uploaded_file(session_key, remote)
-                await file_store.delete_path(local_meta["path"])
+                await file_store.delete(local_meta["id"])
                 local_file_records.append(local_meta)
     except Exception:
         account_pool.release(acc)
+        if getattr(file_store, "strict_storage_errors", False):
+            raise
         fallback_payload = dict(payload)
         summary_parts: list[str] = []
         if use_generated_context_files and plan.summary_text:

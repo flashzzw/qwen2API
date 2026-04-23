@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Image as ImageIcon, RefreshCw, Download, Wand2 } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { toast } from "sonner"
-import { getAuthHeader } from "../lib/auth"
+import { authFetch } from "../lib/auth"
 import { API_BASE } from "../lib/api"
 
 const ASPECT_RATIOS = [
@@ -17,6 +17,15 @@ interface GeneratedImage {
   url: string
   revised_prompt: string
   ratio: string
+}
+
+type ImageApiResponse = {
+  data?: Array<{
+    url?: string
+    revised_prompt?: string
+  }>
+  detail?: string
+  error?: string
 }
 
 export default function ImagePage() {
@@ -36,9 +45,9 @@ export default function ImagePage() {
     setError(null)
 
     try {
-      const res = await fetch(`${API_BASE}/v1/images/generations`, {
+      const res = await authFetch(`${API_BASE}/v1/images/generations`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeader() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "dall-e-3",
           prompt: prompt.trim(),
@@ -48,7 +57,7 @@ export default function ImagePage() {
         }),
       })
 
-      const data = await res.json()
+      const data = (await res.json()) as ImageApiResponse
       if (!res.ok) {
         const detail = data?.detail || data?.error || `HTTP ${res.status}`
         setError(String(detail))
@@ -56,11 +65,14 @@ export default function ImagePage() {
         return
       }
 
-      const newImages: GeneratedImage[] = (data.data || []).map((item: any) => ({
-        url: item.url,
-        revised_prompt: item.revised_prompt || prompt,
-        ratio,
-      }))
+      const newImages: GeneratedImage[] = (data.data || []).flatMap((item) => {
+        if (!item.url) return []
+        return [{
+          url: item.url,
+          revised_prompt: item.revised_prompt || prompt,
+          ratio,
+        }]
+      })
 
       if (newImages.length === 0) {
         setError("未返回图片，请重试")
@@ -70,8 +82,8 @@ export default function ImagePage() {
 
       setImages(prev => [...newImages, ...prev])
       toast.success(`成功生成 ${newImages.length} 张图片`)
-    } catch (err: any) {
-      const msg = err.message || "网络错误"
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "网络错误"
       setError(msg)
       toast.error(`生成失败: ${msg}`)
     } finally {

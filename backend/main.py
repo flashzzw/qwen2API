@@ -10,15 +10,15 @@ import sys
 # 将项目根目录加入到 sys.path，解决直接运行 main.py 时找不到 backend 模块的问题
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.core.config import settings
-from backend.core.database import AsyncJsonDB
+from backend.core.config import API_KEYS_FILE, configure_api_keys_store, settings
+from backend.core.database import AsyncJsonDB, AsyncMongoDB, LocalApiKeyStore, MongoApiKeyStore
 from backend.core.account_pool import AccountPool
 from backend.core.session_affinity import SessionAffinityStore
 from backend.core.upstream_file_cache import UpstreamFileCache
 from backend.core.session_lock import SessionLockRegistry
 from backend.core.request_logging import configure_logging, request_context
 from backend.services.qwen_client import QwenClient
-from backend.services.file_store import LocalFileStore
+from backend.services.file_store import LocalFileStore, MongoGridFSFileStore
 from backend.services.context_offload import ContextOffloader
 from backend.services.upstream_file_uploader import UpstreamFileUploader
 import backend.api.models as models
@@ -29,24 +29,57 @@ from backend.services.context_cleanup import context_cleanup_loop
 configure_logging(getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO))
 log = logging.getLogger("qwen2api")
 
+
+def _build_state_db(*, mongo_db, collection_name: str, local_path: str, default_data):
+    if mongo_db is not None:
+        return AsyncMongoDB(mongo_db[collection_name], default_data=default_data)
+    return AsyncJsonDB(local_path, default_data=default_data)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     with request_context(surface="startup"):
         log.info("正在启动 qwen2API v2.0 企业网关...")
 
-        # 初始化数据存储 (带锁 JSON)
-        app.state.accounts_db = AsyncJsonDB(settings.ACCOUNTS_FILE, default_data=[])
-        app.state.users_db = AsyncJsonDB(settings.USERS_FILE, default_data=[])
-        app.state.captures_db = AsyncJsonDB(settings.CAPTURES_FILE, default_data=[])
-        app.state.session_affinity_db = AsyncJsonDB(settings.CONTEXT_AFFINITY_FILE, default_data=[])
-        app.state.context_cache_db = AsyncJsonDB(settings.CONTEXT_CACHE_FILE, default_data=[])
-        app.state.uploaded_files_db = AsyncJsonDB(settings.UPLOADED_FILES_FILE, default_data=[])
+        mongo_client = None
+        mongo_db = None
+        if settings.MONGODB_URI:
+            from pymongo import MongoClient
+
+            log.info(
+                "检测到 MongoDB Atlas 配置，启用远程持久化 db=%s timeout_ms=%s",
+                settings.MONGODB_DB_NAME,
+                settings.MONGODB_CONNECT_TIMEOUT_MS,
+            )
+            mongo_client = MongoClient(
+                settings.MONGODB_URI,
+                serverSelectionTimeoutMS=settings.MONGODB_CONNECT_TIMEOUT_MS,
+                connectTimeoutMS=settings.MONGODB_CONNECT_TIMEOUT_MS,
+            )
+            mongo_client.admin.command("ping")
+            mongo_db = mongo_client[settings.MONGODB_DB_NAME]
+            configure_api_keys_store(MongoApiKeyStore(mongo_db["api_keys"]))
+        else:
+            configure_api_keys_store(LocalApiKeyStore(API_KEYS_FILE))
+
+        app.state.mongo_client = mongo_client
+        app.state.mongo_db = mongo_db
+
+        # 初始化数据存储
+        app.state.accounts_db = _build_state_db(mongo_db=mongo_db, collection_name="accounts", local_path=settings.ACCOUNTS_FILE, default_data=[])
+        app.state.users_db = _build_state_db(mongo_db=mongo_db, collection_name="users", local_path=settings.USERS_FILE, default_data=[])
+        app.state.captures_db = _build_state_db(mongo_db=mongo_db, collection_name="captures", local_path=settings.CAPTURES_FILE, default_data=[])
+        app.state.session_affinity_db = _build_state_db(mongo_db=mongo_db, collection_name="session_affinity", local_path=settings.CONTEXT_AFFINITY_FILE, default_data=[])
+        app.state.context_cache_db = _build_state_db(mongo_db=mongo_db, collection_name="context_cache", local_path=settings.CONTEXT_CACHE_FILE, default_data=[])
+        app.state.uploaded_files_db = _build_state_db(mongo_db=mongo_db, collection_name="uploaded_files", local_path=settings.UPLOADED_FILES_FILE, default_data=[])
 
         # 初始化组件
         app.state.account_pool = AccountPool(app.state.accounts_db, max_inflight=settings.MAX_INFLIGHT_PER_ACCOUNT)
         app.state.qwen_client = QwenClient(app.state.account_pool)
         app.state.qwen_executor = app.state.qwen_client.executor
-        app.state.file_store = LocalFileStore(settings.CONTEXT_GENERATED_DIR, app.state.uploaded_files_db)
+        if mongo_db is not None:
+            app.state.file_store = MongoGridFSFileStore(mongo_db, app.state.uploaded_files_db)
+        else:
+            app.state.file_store = LocalFileStore(settings.CONTEXT_GENERATED_DIR, app.state.uploaded_files_db)
         app.state.session_affinity = SessionAffinityStore(app.state.session_affinity_db)
         app.state.upstream_file_cache = UpstreamFileCache(app.state.context_cache_db)
         app.state.context_offloader = ContextOffloader(settings)
@@ -78,6 +111,10 @@ async def lifespan(app: FastAPI):
         # 关闭 HTTP 连接池
         await app.state.qwen_client._http_client.aclose()
         log.info("HTTP 连接池已关闭")
+        mongo_client = getattr(app.state, "mongo_client", None)
+        if mongo_client is not None:
+            mongo_client.close()
+            log.info("MongoDB 连接已关闭")
 
 app = FastAPI(title="qwen2API Enterprise Gateway", version="2.0.0", lifespan=lifespan)
 

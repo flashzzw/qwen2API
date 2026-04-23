@@ -33,11 +33,8 @@ class UpstreamFileUploader:
         self.client = client
         self.settings = settings
 
-    async def upload_local_file(self, acc, local_file_meta: dict[str, Any]) -> dict[str, Any]:
-        filename = local_file_meta["filename"]
-        file_path = local_file_meta["path"]
-        content_type = local_file_meta.get("content_type") or mimetypes.guess_type(filename)[0] or "application/octet-stream"
-        raw = Path(file_path).read_bytes()
+    async def upload_bytes(self, acc, *, filename: str, content_type: str, raw: bytes) -> dict[str, Any]:
+        content_type = content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
 
         sts_resp = await self.client._request_json(
             "POST",
@@ -158,6 +155,17 @@ class UpstreamFileUploader:
             "parse_status": parse_status,
             "remote_ref": remote_ref,
         }
+
+    async def upload_local_file(self, acc, local_file_meta: dict[str, Any]) -> dict[str, Any]:
+        filename = local_file_meta["filename"]
+        file_path = local_file_meta["path"]
+        raw = Path(file_path).read_bytes()
+        return await self.upload_bytes(
+            acc,
+            filename=filename,
+            content_type=local_file_meta.get("content_type") or "",
+            raw=raw,
+        )
 
     async def delete_remote_file(self, acc, remote_meta: dict[str, Any]) -> bool:
         # Qwen web upload delete API has not been fully confirmed yet.

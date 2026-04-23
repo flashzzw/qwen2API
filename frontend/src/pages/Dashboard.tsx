@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { Server, Activity, ShieldAlert, ActivityIcon, FileJson, Cpu, Shield, Globe, ImageIcon, Paperclip, Flame, Database } from "lucide-react"
-import { getAuthHeader } from "../lib/auth"
+import { authFetch } from "../lib/auth"
 import { API_BASE } from "../lib/api"
 import { toast } from "sonner"
 
@@ -43,13 +43,13 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/admin/status`, { headers: getAuthHeader() })
+        const res = await authFetch(`${API_BASE}/api/admin/status`)
         if (!res.ok) throw new Error("Unauthorized")
         const data = await res.json()
         setStatus(data)
       } catch {
         if (!errOnce) {
-          toast.error("状态获取失败，请在「系统设置」检查您的当前会话 Key。")
+          toast.error("状态获取失败，请重新登录后重试。")
           setErrOnce(true)
         }
       }

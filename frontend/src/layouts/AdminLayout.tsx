@@ -1,10 +1,14 @@
 import { Outlet, Link, useLocation } from "react-router-dom"
-import { Activity, Key, Settings, LayoutDashboard, MessageSquare, Menu, X, Image } from "lucide-react"
+import { Activity, Key, Settings, LayoutDashboard, MessageSquare, Menu, X, Image, LogOut } from "lucide-react"
 import { useState } from "react"
+import { toast } from "sonner"
+import { Button } from "../components/ui/button"
+import { useAuth } from "../components/auth/useAuth"
 
 export default function AdminLayout() {
   const loc = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { logout } = useAuth()
 
   const navs = [
     { name: "运行状态", path: "/", icon: LayoutDashboard },
@@ -14,6 +18,15 @@ export default function AdminLayout() {
     { name: "图片生成", path: "/images", icon: Image },
     { name: "系统设置", path: "/settings", icon: Settings },
   ]
+
+  const handleLogout = async () => {
+    try {
+      await logout()
+      toast.success("已退出登录")
+    } catch {
+      toast.error("退出登录失败")
+    }
+  }
 
   return (
     <div className="flex min-h-screen w-full bg-background text-foreground transition-colors duration-300">
@@ -54,6 +67,12 @@ export default function AdminLayout() {
             )
           })}
         </nav>
+        <div className="border-t border-border/40 p-4">
+          <Button className="w-full justify-start gap-3" onClick={handleLogout} variant="ghost">
+            <LogOut className="h-4 w-4" />
+            退出登录
+          </Button>
+        </div>
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden relative">

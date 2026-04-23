@@ -1,23 +1,24 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from backend.core.config import settings
 from backend.core.database import AsyncJsonDB
 from backend.core.account_pool import AccountPool, Account
+from backend.services.admin_auth import (
+    clear_admin_session_cookie,
+    has_valid_admin_session,
+    require_admin_token,
+    set_admin_session_cookie,
+)
 import secrets
 
 router = APIRouter()
 
-def verify_admin(authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    token = authorization.split("Bearer ")[1]
+def verify_admin(request: Request):
+    return require_admin_token(request)
 
-    from backend.core.config import API_KEYS, settings as backend_settings
 
-    # 允许使用默认管理员 Key (ADMIN_KEY) 或者任何已生成的 API_KEYS 作为管理凭证
-    if token != backend_settings.ADMIN_KEY and token not in API_KEYS:
-        raise HTTPException(status_code=403, detail="Forbidden: Admin Key Mismatch")
-    return token
+class AdminLoginRequest(BaseModel):
+    password: str
 
 class UserCreate(BaseModel):
     name: str
@@ -28,6 +29,26 @@ class User(BaseModel):
     name: str
     quota: int
     used_tokens: int
+
+
+@router.post("/auth/login")
+async def login_admin(data: AdminLoginRequest, request: Request, response: Response):
+    if not secrets.compare_digest(data.password, settings.ADMIN_KEY):
+        raise HTTPException(status_code=401, detail="登录密钥错误")
+
+    set_admin_session_cookie(response, request)
+    return {"ok": True}
+
+
+@router.post("/auth/logout")
+async def logout_admin(request: Request, response: Response):
+    clear_admin_session_cookie(response, request)
+    return {"ok": True}
+
+
+@router.get("/auth/session")
+async def get_admin_session(request: Request):
+    return {"authenticated": has_valid_admin_session(request)}
 
 @router.get("/status", dependencies=[Depends(verify_admin)])
 async def get_system_status(request: Request):

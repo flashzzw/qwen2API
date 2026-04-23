@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Button } from "../components/ui/button"
 import { Trash2, Plus, RefreshCw, Bot, ShieldCheck, MailWarning } from "lucide-react"
 import { toast } from "sonner"
-import { getAuthHeader } from "../lib/auth"
+import { authFetch } from "../lib/auth"
 import { API_BASE } from "../lib/api"
 
 type AccountItem = {
@@ -88,13 +88,13 @@ export default function AccountsPage() {
   }, [email, password])
 
   const fetchAccounts = () => {
-    fetch(`${API_BASE}/api/admin/accounts`, { headers: getAuthHeader() })
+    authFetch(`${API_BASE}/api/admin/accounts`)
       .then(res => {
         if (!res.ok) throw new Error("unauthorized")
         return res.json()
       })
       .then(data => setAccounts(data.accounts || []))
-      .catch(() => toast.error("\u5237\u65b0\u8d26\u53f7\u5217\u8868\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u4f1a\u8bdd\u5bc6\u94a5"))
+      .catch(() => toast.error("\u5237\u65b0\u8d26\u53f7\u5217\u8868\u5931\u8d25\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55"))
   }
 
   useEffect(() => {
@@ -121,9 +121,9 @@ export default function AccountsPage() {
       return
     }
     const id = toast.loading("\u6b63\u5728\u6ce8\u5165\u8d26\u53f7...")
-    fetch(`${API_BASE}/api/admin/accounts`, {
+    authFetch(`${API_BASE}/api/admin/accounts`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email: email || `manual_${Date.now()}@qwen`,
         password,
@@ -146,9 +146,8 @@ export default function AccountsPage() {
 
   const handleDelete = (targetEmail: string) => {
     const id = toast.loading(`\u6b63\u5728\u5220\u9664 ${targetEmail}...`)
-    fetch(`${API_BASE}/api/admin/accounts/${encodeURIComponent(targetEmail)}`, {
+    authFetch(`${API_BASE}/api/admin/accounts/${encodeURIComponent(targetEmail)}`, {
       method: "DELETE",
-      headers: getAuthHeader(),
     }).then(res => {
       if (!res.ok) throw new Error("delete failed")
       toast.success(`\u5df2\u5220\u9664 ${targetEmail}`, { id })
@@ -159,9 +158,8 @@ export default function AccountsPage() {
   const handleAutoRegister = () => {
     setRegistering(true)
     const id = toast.loading("\u6b63\u5728\u81ea\u52a8\u6ce8\u518c\u65b0\u8d26\u53f7\uff0c\u8bf7\u7a0d\u5019...")
-    fetch(`${API_BASE}/api/admin/accounts/register`, {
+    authFetch(`${API_BASE}/api/admin/accounts/register`, {
       method: "POST",
-      headers: getAuthHeader(),
     }).then(res => res.json())
       .then(data => {
         if (data.activation_pending) {
@@ -182,9 +180,8 @@ export default function AccountsPage() {
   const handleVerify = (targetEmail: string) => {
     setVerifying(targetEmail)
     const id = toast.loading(`\u6b63\u5728\u9a8c\u8bc1 ${targetEmail}...`)
-    fetch(`${API_BASE}/api/admin/accounts/${encodeURIComponent(targetEmail)}/verify`, {
+    authFetch(`${API_BASE}/api/admin/accounts/${encodeURIComponent(targetEmail)}/verify`, {
       method: "POST",
-      headers: getAuthHeader(),
     }).then(res => res.json())
       .then(data => {
         if (data.valid) {
@@ -201,9 +198,8 @@ export default function AccountsPage() {
   const handleVerifyAll = () => {
     setVerifyingAll(true)
     const id = toast.loading("\u6b63\u5728\u5e76\u53d1\u5de1\u68c0\u6240\u6709\u8d26\u53f7...")
-    fetch(`${API_BASE}/api/admin/verify`, {
+    authFetch(`${API_BASE}/api/admin/verify`, {
       method: "POST",
-      headers: getAuthHeader(),
     }).then(res => res.json())
       .then(data => {
         if (data.ok) {
@@ -219,9 +215,8 @@ export default function AccountsPage() {
 
   const handleActivate = (targetEmail: string) => {
     const id = toast.loading(`\u6b63\u5728\u6fc0\u6d3b ${targetEmail}...`)
-    fetch(`${API_BASE}/api/admin/accounts/${encodeURIComponent(targetEmail)}/activate`, {
+    authFetch(`${API_BASE}/api/admin/accounts/${encodeURIComponent(targetEmail)}/activate`, {
       method: "POST",
-      headers: getAuthHeader(),
     }).then(res => res.json())
       .then(data => {
         if (data.pending) {

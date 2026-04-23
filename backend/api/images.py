@@ -12,6 +12,7 @@ import logging
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from backend.services.qwen_client import QwenClient
+from backend.services.admin_auth import resolve_admin_session_token
 
 log = logging.getLogger("qwen2api.images")
 router = APIRouter()
@@ -57,6 +58,10 @@ def _resolve_image_model(requested: str | None) -> str:
 
 
 def _get_token(request: Request) -> str:
+    admin_token = resolve_admin_session_token(request)
+    if admin_token:
+        return admin_token
+
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         return auth[7:].strip()

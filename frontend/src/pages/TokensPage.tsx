@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import { Button } from "../components/ui/button"
 import { Plus, RefreshCw, Copy, Check, Trash2 } from "lucide-react"
 import { toast } from "sonner"
-import { getAuthHeader } from "../lib/auth"
+import { authFetch } from "../lib/auth"
 import { API_BASE } from "../lib/api"
 
 export default function TokensPage() {
@@ -10,7 +10,7 @@ export default function TokensPage() {
   const [copied, setCopied] = useState<string | null>(null)
 
   const fetchKeys = () => {
-    fetch(`${API_BASE}/api/admin/keys`, { headers: getAuthHeader() })
+    authFetch(`${API_BASE}/api/admin/keys`)
       .then(res => {
         if (!res.ok) throw new Error("Unauthorized")
         return res.json()
@@ -24,9 +24,8 @@ export default function TokensPage() {
   }, [])
 
   const handleGenerate = () => {
-    fetch(`${API_BASE}/api/admin/keys`, {
+    authFetch(`${API_BASE}/api/admin/keys`, {
       method: "POST",
-      headers: getAuthHeader()
     }).then(async res => {
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
@@ -40,9 +39,8 @@ export default function TokensPage() {
   }
 
   const handleDelete = (key: string) => {
-    fetch(`${API_BASE}/api/admin/keys/${encodeURIComponent(key)}`, {
+    authFetch(`${API_BASE}/api/admin/keys/${encodeURIComponent(key)}`, {
       method: "DELETE",
-      headers: getAuthHeader()
     }).then(async res => {
       if (res.ok) {
         toast.success("API Key 已删除")

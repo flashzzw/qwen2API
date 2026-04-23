@@ -85,7 +85,7 @@ async def preprocess_attachments(payload: dict[str, Any], file_store, owner_toke
                         filename=result["filename"],
                         content_type=content_type,
                         source="inline-image",
-                        local_path=result["path"],
+                        local_path=result.get("path", ""),
                         sha256=result["sha256"],
                         purpose="user-upload",
                     ))
@@ -124,7 +124,7 @@ async def preprocess_attachments(payload: dict[str, Any], file_store, owner_toke
                     filename=result["filename"],
                     content_type=content_type,
                     source="manual-upload",
-                    local_path=result["path"],
+                    local_path=result.get("path", ""),
                     sha256=result["sha256"],
                     purpose="user-upload",
                 ))

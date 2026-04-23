@@ -1,30 +1,34 @@
 import { useState, useEffect } from "react"
-import { Settings2, RefreshCw, KeyRound, ServerCrash, Code } from "lucide-react"
+import { Settings2, RefreshCw, ServerCrash, Code, ShieldCheck } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { toast } from "sonner"
-import { getAuthHeader } from "../lib/auth"
+import { authFetch } from "../lib/auth"
 import { API_BASE } from "../lib/api"
 
+type SettingsResponse = {
+  version?: string
+  max_inflight_per_account?: number
+  global_max_inflight?: number
+  chat_id_pool_target?: number
+  chat_id_pool_ttl_seconds?: number
+  model_aliases?: Record<string, string>
+}
+
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<any>(null)
-  const [sessionKey, setSessionKey] = useState("")
+  const [settings, setSettings] = useState<SettingsResponse | null>(null)
   const [maxInflight, setMaxInflight] = useState(4)
   const [globalMaxInflight, setGlobalMaxInflight] = useState(0)
   const [poolTarget, setPoolTarget] = useState(5)
   const [poolTtlMin, setPoolTtlMin] = useState(10)
   const [modelAliases, setModelAliases] = useState("")
 
-  const loadSessionKey = () => {
-    setSessionKey(localStorage.getItem('qwen2api_key') || "")
-  }
-
   const fetchSettings = () => {
-    fetch(`${API_BASE}/api/admin/settings`, { headers: getAuthHeader() })
+    authFetch(`${API_BASE}/api/admin/settings`)
       .then(res => {
         if(!res.ok) throw new Error("Unauthorized")
         return res.json()
       })
-      .then(data => {
+      .then((data: SettingsResponse) => {
         setSettings(data)
         setMaxInflight(data.max_inflight_per_account || 4)
         setGlobalMaxInflight(data.global_max_inflight || 0)
@@ -32,34 +36,17 @@ export default function SettingsPage() {
         setPoolTtlMin(Math.round((data.chat_id_pool_ttl_seconds || 600) / 60))
         setModelAliases(JSON.stringify(data.model_aliases || {}, null, 2))
       })
-      .catch(() => toast.error("配置获取失败，请检查会话 Key"))
+      .catch(() => toast.error("配置获取失败，请重新登录后重试"))
   }
 
   useEffect(() => {
-    loadSessionKey()
     fetchSettings()
   }, [])
 
-  const handleSaveSessionKey = () => {
-    if (!sessionKey.trim()) {
-      toast.error("请输入 Key")
-      return
-    }
-    localStorage.setItem('qwen2api_key', sessionKey.trim())
-    toast.success("Key 已保存到本地，刷新数据...")
-    fetchSettings()
-  }
-
-  const handleClearSessionKey = () => {
-    localStorage.removeItem('qwen2api_key')
-    setSessionKey("")
-    toast.success("Key 已清除")
-  }
-
   const handleSaveConcurrency = () => {
-    fetch(`${API_BASE}/api/admin/settings`, {
+    authFetch(`${API_BASE}/api/admin/settings`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         max_inflight_per_account: Number(maxInflight),
         global_max_inflight: Number(globalMaxInflight),
@@ -71,9 +58,9 @@ export default function SettingsPage() {
   }
 
   const handleSavePool = () => {
-    fetch(`${API_BASE}/api/admin/settings`, {
+    authFetch(`${API_BASE}/api/admin/settings`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id_pool_target: Number(poolTarget),
         chat_id_pool_ttl_seconds: Number(poolTtlMin) * 60,
@@ -87,15 +74,15 @@ export default function SettingsPage() {
   const handleSaveAliases = () => {
     try {
       const parsed = JSON.parse(modelAliases)
-      fetch(`${API_BASE}/api/admin/settings`, {
+      authFetch(`${API_BASE}/api/admin/settings`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", ...getAuthHeader() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model_aliases: parsed })
       }).then(res => {
         if(res.ok) { toast.success("模型映射规则已更新"); fetchSettings(); }
         else toast.error("保存失败")
       })
-    } catch(e) {
+    } catch {
       toast.error("JSON 格式错误，请检查语法")
     }
   }
@@ -197,27 +184,16 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid gap-6 min-w-0">
-        {/* Session Key */}
         <div className="rounded-xl border bg-card text-card-foreground shadow-sm min-w-0">
           <div className="flex flex-col space-y-1.5 p-6 border-b bg-muted/30">
             <div className="flex items-center gap-2">
-              <KeyRound className="h-5 w-5 text-primary" />
-              <h3 className="font-semibold leading-none tracking-tight">当前会话 Key</h3>
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              <h3 className="font-semibold leading-none tracking-tight">当前登录方式</h3>
             </div>
-            <p className="text-sm text-muted-foreground">将已有的 API Key 粘贴到此处，控制台将使用它进行所有的管理操作。（保存在浏览器本地）</p>
+            <p className="text-sm text-muted-foreground">管理台已切换为登录页 + HttpOnly Cookie 会话，浏览器本地不再保存管理员密钥。</p>
           </div>
-          <div className="p-6">
-            <div className="flex gap-2 items-center flex-wrap">
-              <input
-                type="password"
-                value={sessionKey}
-                onChange={e => setSessionKey(e.target.value)}
-                placeholder="sk-qwen-... 或默认管理员密钥 admin"
-                className="flex h-10 flex-1 min-w-[200px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-              />
-              <Button onClick={handleSaveSessionKey}>保存</Button>
-              <Button variant="ghost" onClick={handleClearSessionKey}>清除</Button>
-            </div>
+          <div className="p-6 text-sm text-muted-foreground">
+            当前页面以及账号管理、接口测试、图片生成等功能，都会自动复用已登录会话。
           </div>
         </div>
 

@@ -1,8 +1,9 @@
 import os
-import json
 from pathlib import Path
 from pydantic_settings import BaseSettings
-from typing import Dict, Set
+from typing import Any
+
+from backend.core.database import LocalApiKeyStore
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -47,26 +48,31 @@ class Settings(BaseSettings):
     CONTEXT_AFFINITY_FILE: str = os.getenv("CONTEXT_AFFINITY_FILE", str(DATA_DIR / "session_affinity.json"))
     CONTEXT_ALLOWED_GENERATED_EXTS: str = os.getenv("CONTEXT_ALLOWED_GENERATED_EXTS", "txt,md,json,log")
     CONTEXT_ALLOWED_USER_EXTS: str = os.getenv("CONTEXT_ALLOWED_USER_EXTS", "txt,md,json,log,xml,yaml,yml,csv,html,css,py,js,ts,java,c,cpp,cs,php,go,rb,sh,zsh,ps1,bat,cmd,pdf,doc,docx,ppt,pptx,xls,xlsx,png,jpg,jpeg,webp,gif,tiff,bmp,svg")
+    MONGODB_URI: str = os.getenv("MONGODB_URI", "").strip()
+    MONGODB_DB_NAME: str = os.getenv("MONGODB_DB_NAME", "qwen2api")
+    MONGODB_CONNECT_TIMEOUT_MS: int = int(os.getenv("MONGODB_CONNECT_TIMEOUT_MS", 5000))
 
     class Config:
         env_file = ".env"
 
 API_KEYS_FILE = DATA_DIR / "api_keys.json"
+_api_keys_store: Any = LocalApiKeyStore(API_KEYS_FILE)
+
+
+def configure_api_keys_store(store: Any) -> None:
+    global _api_keys_store
+    _api_keys_store = store
+    API_KEYS.clear()
+    API_KEYS.update(load_api_keys())
 
 def load_api_keys() -> set:
-    if API_KEYS_FILE.exists():
-        try:
-            with open(API_KEYS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return set(data.get("keys", []))
-        except Exception:
-            pass
-    return set()
+    try:
+        return set(_api_keys_store.load())
+    except Exception:
+        return set()
 
 def save_api_keys(keys: set):
-    API_KEYS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(API_KEYS_FILE, "w", encoding="utf-8") as f:
-        json.dump({"keys": list(keys)}, f, indent=2)
+    _api_keys_store.save(set(keys))
 
 # 在内存中存储管理的 API Keys
 API_KEYS = load_api_keys()

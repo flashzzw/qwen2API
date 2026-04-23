@@ -1,0 +1,40 @@
+name: Render Healthcheck
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate secret
+        env:
+          RENDER_HEALTHCHECK_URL: ${{ secrets.RENDER_HEALTHCHECK_URL }}
+        run: |
+          if [ -z "$RENDER_HEALTHCHECK_URL" ]; then
+            echo "RENDER_HEALTHCHECK_URL secret is not configured" >&2
+            exit 1
+          fi
+
+      - name: Ping Render health endpoint
+        env:
+          RENDER_HEALTHCHECK_URL: ${{ secrets.RENDER_HEALTHCHECK_URL }}
+        run: |
+          set +e
+          output=$(curl -fsS --max-time 30 "$RENDER_HEALTHCHECK_URL" 2>&1)
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            case "$status" in
+              6) echo "DNS resolution failed" >&2 ;;
+              7) echo "Connection failed" >&2 ;;
+              22) echo "HTTP error response from health endpoint" >&2 ;;
+              *) echo "curl failed with status $status" >&2 ;;
+            esac
+            echo "$output" >&2
+            exit "$status"
+          fi
+          echo "$output"

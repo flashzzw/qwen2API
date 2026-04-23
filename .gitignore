@@ -9,6 +9,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+.venv/
 
 # Data and Logs
 data/*.json

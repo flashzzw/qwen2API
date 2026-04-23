@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import HTTPException, Request
 
 from backend.core.config import API_KEYS, settings
+from backend.services.admin_auth import resolve_admin_session_token
 
 
 @dataclass(slots=True)
@@ -15,6 +16,10 @@ class AuthContext:
 
 
 def extract_api_token(request: Request) -> str:
+    admin_token = resolve_admin_session_token(request)
+    if admin_token:
+        return admin_token
+
     auth_header = request.headers.get("Authorization", "")
     token = auth_header[7:].strip() if auth_header.startswith("Bearer ") else ""
     if token:

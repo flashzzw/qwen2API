@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Button } from "../components/ui/button"
 import { Send, RefreshCw, Bot } from "lucide-react"
-import { getAuthHeader } from "../lib/auth"
+import { authFetch } from "../lib/auth"
 import { API_BASE } from "../lib/api"
 import { toast } from "sonner"
 
@@ -62,7 +62,7 @@ export default function TestPage() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch(`${API_BASE}/v1/models`, { headers: getAuthHeader() })
+        const r = await authFetch(`${API_BASE}/v1/models`)
         if (!r.ok) return
         const j = await r.json()
         const ids = (j?.data || [])
@@ -88,9 +88,9 @@ export default function TestPage() {
 
     try {
       if (!stream) {
-        const res = await fetch(`${API_BASE}/v1/chat/completions`, {
+        const res = await authFetch(`${API_BASE}/v1/chat/completions`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...getAuthHeader() },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model, messages: [...messages, userMsg], stream: false })
         })
         const data = await res.json()
@@ -102,9 +102,9 @@ export default function TestPage() {
           setMessages(prev => [...prev, { role: "assistant", content: `❌ 未知响应: ${JSON.stringify(data)}`, error: true }])
         }
       } else {
-        const res = await fetch(`${API_BASE}/v1/chat/completions`, {
+        const res = await authFetch(`${API_BASE}/v1/chat/completions`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...getAuthHeader() },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model, messages: [...messages, userMsg], stream: true })
         })
 
@@ -156,7 +156,7 @@ export default function TestPage() {
                     return msgs
                   })
                 }
-              } catch (_) { /* skip */ }
+              } catch { /* skip */ }
             }
           }
         }
@@ -169,9 +169,10 @@ export default function TestPage() {
           })
         }
       }
-    } catch (err: any) {
-      toast.error(`网络错误: ${err.message}`)
-      setMessages(prev => [...prev, { role: "assistant", content: `❌ 网络错误: ${err.message}`, error: true }])
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "未知错误"
+      toast.error(`网络错误: ${message}`)
+      setMessages(prev => [...prev, { role: "assistant", content: `❌ 网络错误: ${message}`, error: true }])
     } finally {
       setLoading(false)
     }

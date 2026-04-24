@@ -10,7 +10,7 @@ import sys
 # 将项目根目录加入到 sys.path，解决直接运行 main.py 时找不到 backend 模块的问题
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.core.config import API_KEYS_FILE, configure_api_keys_store, settings
+from backend.core.config import API_KEYS_FILE, configure_api_keys_store, get_cors_allowed_origins, settings
 from backend.core.database import AsyncJsonDB, AsyncMongoDB, LocalApiKeyStore, MongoApiKeyStore
 from backend.core.account_pool import AccountPool
 from backend.core.session_affinity import SessionAffinityStore
@@ -120,10 +120,10 @@ app = FastAPI(title="qwen2API Enterprise Gateway", version="2.0.0", lifespan=lif
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=get_cors_allowed_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Requested-With"],
 )
 
 # 挂载路由

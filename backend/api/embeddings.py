@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Request, HTTPException
-import json
-import uuid
 import logging
+from backend.services.auth_quota import resolve_auth_context
 from backend.services.token_calc import count_tokens
 
 log = logging.getLogger("qwen2api.embeddings")
@@ -19,22 +18,8 @@ async def create_embeddings(request: Request):
     """
     app = request.app
     users_db = app.state.users_db
-    
-    # 鉴权 (完全复原单文件逻辑)
-    auth_header = request.headers.get("Authorization", "")
-    token = auth_header[7:].strip() if auth_header.startswith("Bearer ") else ""
-
-    if not token:
-        token = request.headers.get("x-api-key", "").strip()
-    if not token:
-        token = request.query_params.get("key", "").strip() or request.query_params.get("api_key", "").strip()
-
-    from backend.core.config import API_KEYS, settings
-    admin_k = settings.ADMIN_KEY
-
-    if API_KEYS:
-        if token != admin_k and token not in API_KEYS and not token:
-            raise HTTPException(status_code=401, detail="Invalid API Key")
+    auth = await resolve_auth_context(request, users_db)
+    token = auth.token
 
     users = await users_db.get()
     user = next((u for u in users if u["id"] == token), None)

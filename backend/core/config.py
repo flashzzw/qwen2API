@@ -7,6 +7,14 @@ from backend.core.database import LocalApiKeyStore
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
+DEFAULT_CORS_ALLOWED_ORIGINS = ",".join(
+    [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ]
+)
 
 class Settings(BaseSettings):
     # 服务配置
@@ -30,6 +38,7 @@ class Settings(BaseSettings):
 
     # 日志
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    CORS_ALLOWED_ORIGINS: str = os.getenv("CORS_ALLOWED_ORIGINS", DEFAULT_CORS_ALLOWED_ORIGINS)
 
     # 数据文件路径
     ACCOUNTS_FILE: str = os.getenv("ACCOUNTS_FILE", str(DATA_DIR / "accounts.json"))
@@ -80,6 +89,14 @@ API_KEYS = load_api_keys()
 VERSION = "2.0.0"
 
 settings = Settings()
+
+
+def parse_csv_env_list(raw: str) -> list[str]:
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def get_cors_allowed_origins() -> list[str]:
+    return parse_csv_env_list(settings.CORS_ALLOWED_ORIGINS)
 
 # 全局映射
 MODEL_MAP = {

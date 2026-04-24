@@ -40,10 +40,8 @@ async def resolve_auth_context(request: Request, users_db) -> AuthContext:
     users = await users_db.get()
     user = next((u for u in users if u["id"] == token), None)
 
-    if API_KEYS and token != settings.ADMIN_KEY and token not in API_KEYS:
-        saved_snapshots = getattr(users_db, "saved_snapshots", None)
-        if user is None and not isinstance(saved_snapshots, list):
-            raise HTTPException(status_code=401, detail="Invalid API Key")
+    if token != settings.ADMIN_KEY and token not in API_KEYS and user is None:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
 
     if user and user.get("quota", 0) <= user.get("used_tokens", 0):
         raise HTTPException(status_code=402, detail="Quota Exceeded")

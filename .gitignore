@@ -3,6 +3,7 @@ node_modules/
 dist/
 dist-ssr/
 *.local
+.npm-cache/
 
 # Python
 __pycache__/
@@ -44,3 +45,9 @@ fix_*.py
 # local cleanup
 tests/
 docs/superpowers/
+
+# Backend regression tests are part of the repository.
+!backend/tests/
+!backend/tests/**
+backend/tests/**/__pycache__/
+backend/tests/**/*.py[cod]

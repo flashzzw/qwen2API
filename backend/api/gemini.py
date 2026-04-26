@@ -5,8 +5,8 @@ import json
 import logging
 from typing import Any
 
-from backend.adapter.standard_request import StandardRequest
-from backend.adapter.cli_proxy import CLIProxy
+from backend.protocols.common.standard_request import StandardRequest
+from backend.protocols.common.cli_proxy import CLIProxy
 from backend.core.config import resolve_model
 from backend.core.request_logging import new_request_id, request_context, update_request_context
 from backend.runtime import stream_presenter

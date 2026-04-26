@@ -135,7 +135,7 @@ async def create_user(user: UserCreate, request: Request):
 async def add_account(request: Request):
     import time
     from backend.core.account_pool import Account, AccountPool
-    from backend.services.qwen_client import QwenClient
+    from backend.integrations.qwen.client import QwenClient
 
     pool: AccountPool = request.app.state.account_pool
     client: QwenClient = request.app.state.qwen_client
@@ -182,7 +182,7 @@ async def list_accounts(request: Request):
 async def register_new_account(request: Request):
     """一键调用浏览器无头注册新千问账号"""
     import logging
-    from backend.services.auth_resolver import register_qwen_account
+    from backend.integrations.qwen.auth import register_qwen_account
     from backend.core.account_pool import AccountPool
     pool: AccountPool = request.app.state.account_pool
 
@@ -210,7 +210,7 @@ async def register_new_account(request: Request):
 async def verify_all_accounts(request: Request):
     """验证所有账号的有效性 (完全复原单文件逻辑)"""
     from backend.core.account_pool import AccountPool
-    from backend.services.qwen_client import QwenClient
+    from backend.integrations.qwen.client import QwenClient
     import logging
 
     log = logging.getLogger("qwen2api.admin")
@@ -233,7 +233,7 @@ async def verify_all_accounts(request: Request):
 @router.post("/accounts/{email}/activate", dependencies=[Depends(verify_admin)])
 async def activate_account(email: str, request: Request):
     """单独激活某个账号"""
-    from backend.services.auth_resolver import activate_account as activate_logic
+    from backend.integrations.qwen.auth import activate_account as activate_logic
     from backend.core.account_pool import AccountPool
 
     pool: AccountPool = request.app.state.account_pool
@@ -260,7 +260,7 @@ async def activate_account(email: str, request: Request):
 @router.post("/accounts/{email}/verify", dependencies=[Depends(verify_admin)])
 async def verify_account(email: str, request: Request):
     """单独验证某个账号的有效性 (完全复原单文件逻辑)"""
-    from backend.services.qwen_client import QwenClient
+    from backend.integrations.qwen.client import QwenClient
     from backend.core.account_pool import AccountPool
     import logging
 

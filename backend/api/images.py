@@ -12,7 +12,7 @@ import logging
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from backend.services.auth_quota import resolve_auth_context
-from backend.services.qwen_client import QwenClient
+from backend.integrations.qwen.client import QwenClient
 
 log = logging.getLogger("qwen2api.images")
 router = APIRouter()

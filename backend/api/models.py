@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 
 from backend.core.config import MODEL_MAP, resolve_model
 from backend.services.auth_quota import resolve_auth_context
-from backend.services.qwen_client import QwenClient
+from backend.integrations.qwen.client import QwenClient
 
 router = APIRouter()
 

@@ -5,18 +5,18 @@ import logging
 import time
 import uuid
 from typing import Any, Awaitable, Callable
-from backend.adapter.standard_request import StandardRequest
+from backend.protocols.common.standard_request import StandardRequest
 from backend.core.config import settings
 from backend.core.request_logging import new_request_id, request_context, update_request_context
 from backend.services.attachment_preprocessor import preprocess_attachments
 from backend.services.context_attachment_manager import prepare_context_attachments, derive_session_key
 from backend.services.auth_quota import resolve_auth_context
-from backend.services.completion_bridge import run_retryable_completion_bridge
-from backend.services.openai_stream_translator import OpenAIStreamTranslator
-from backend.services.prompt_builder import CLAUDE_CODE_OPENAI_PROFILE, OPENCLAW_OPENAI_PROFILE
-from backend.services.response_formatters import build_openai_completion_payload
-from backend.services.qwen_client import QwenClient
-from backend.services.standard_request_builder import build_chat_standard_request
+from backend.application.completions.bridge import run_retryable_completion_bridge
+from backend.protocols.openai.stream_translator import OpenAIStreamTranslator
+from backend.application.completions.prompt_builder import CLAUDE_CODE_OPENAI_PROFILE, OPENCLAW_OPENAI_PROFILE
+from backend.protocols.openai.response_formatters import build_openai_completion_payload
+from backend.integrations.qwen.client import QwenClient
+from backend.application.completions.request_builder import build_chat_standard_request
 from backend.services.task_session import (
     build_openai_assistant_history_message,
     clear_invalidated_session_chat,
@@ -175,7 +175,7 @@ async def chat_completions(request: Request):
                             assistant_message=assistant_message,
                         )
                         final_finish_reason = "tool_calls" if directive.stop_reason == "tool_use" else execution.state.finish_reason
-                        for chunk in translator.finalize(final_finish_reason):
+                        for chunk in translator.finalize(final_finish_reason, final_directive=directive):
                             yield chunk
                         return
                     except HTTPException as he:

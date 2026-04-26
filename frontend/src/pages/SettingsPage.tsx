@@ -1,175 +1,28 @@
-import { useState, useEffect } from "react"
 import { Settings2, RefreshCw, ServerCrash, Code, ShieldCheck } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { toast } from "sonner"
-import { authFetch } from "../lib/auth"
-import { API_BASE } from "../lib/api"
-
-type SettingsResponse = {
-  version?: string
-  max_inflight_per_account?: number
-  global_max_inflight?: number
-  chat_id_pool_target?: number
-  chat_id_pool_ttl_seconds?: number
-  model_aliases?: Record<string, string>
-}
+import { useAdminSettings } from "../features/admin/useAdminSettings"
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<SettingsResponse | null>(null)
-  const [maxInflight, setMaxInflight] = useState(4)
-  const [globalMaxInflight, setGlobalMaxInflight] = useState(0)
-  const [poolTarget, setPoolTarget] = useState(5)
-  const [poolTtlMin, setPoolTtlMin] = useState(10)
-  const [modelAliases, setModelAliases] = useState("")
-
-  const fetchSettings = () => {
-    authFetch(`${API_BASE}/api/admin/settings`)
-      .then(res => {
-        if(!res.ok) throw new Error("Unauthorized")
-        return res.json()
-      })
-      .then((data: SettingsResponse) => {
-        setSettings(data)
-        setMaxInflight(data.max_inflight_per_account || 4)
-        setGlobalMaxInflight(data.global_max_inflight || 0)
-        setPoolTarget(data.chat_id_pool_target || 5)
-        setPoolTtlMin(Math.round((data.chat_id_pool_ttl_seconds || 600) / 60))
-        setModelAliases(JSON.stringify(data.model_aliases || {}, null, 2))
-      })
-      .catch(() => toast.error("配置获取失败，请重新登录后重试"))
-  }
-
-  useEffect(() => {
-    fetchSettings()
-  }, [])
-
-  const handleSaveConcurrency = () => {
-    authFetch(`${API_BASE}/api/admin/settings`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        max_inflight_per_account: Number(maxInflight),
-        global_max_inflight: Number(globalMaxInflight),
-      })
-    }).then(res => {
-      if(res.ok) { toast.success("并发配置已保存（运行时立即生效）"); fetchSettings(); }
-      else toast.error("保存失败")
-    })
-  }
-
-  const handleSavePool = () => {
-    authFetch(`${API_BASE}/api/admin/settings`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id_pool_target: Number(poolTarget),
-        chat_id_pool_ttl_seconds: Number(poolTtlMin) * 60,
-      })
-    }).then(res => {
-      if(res.ok) { toast.success("预热池配置已保存（下一轮刷新生效）"); fetchSettings(); }
-      else toast.error("保存失败")
-    })
-  }
-
-  const handleSaveAliases = () => {
-    try {
-      const parsed = JSON.parse(modelAliases)
-      authFetch(`${API_BASE}/api/admin/settings`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model_aliases: parsed })
-      }).then(res => {
-        if(res.ok) { toast.success("模型映射规则已更新"); fetchSettings(); }
-        else toast.error("保存失败")
-      })
-    } catch {
-      toast.error("JSON 格式错误，请检查语法")
-    }
-  }
-
-  const baseUrl = API_BASE || `http://${window.location.hostname}:7860`
-
-  const curlExample = `# OpenAI streaming chat
-  curl ${baseUrl}/v1/chat/completions \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer YOUR_API_KEY" \
-    -d '{
-      "model": "qwen3.6-plus",
-      "messages": [{"role": "user", "content": "Hello"}],
-      "stream": true
-    }'
-
-  # Upload one file first (the response contains a reusable content_block)
-  curl ${baseUrl}/v1/files \
-    -H "Authorization: Bearer YOUR_API_KEY" \
-    -F "file=@./context.txt"
-
-  # OpenAI + attachment
-  curl ${baseUrl}/v1/chat/completions \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer YOUR_API_KEY" \
-    -d '{
-      "model": "qwen3.6-plus",
-      "stream": false,
-      "messages": [
-        {
-          "role": "user",
-          "content": [
-            {"type": "text", "text": "Read the uploaded file and summarize the key points."},
-            {"type": "input_file", "file_id": "FILE_ID_FROM_UPLOAD", "filename": "context.txt", "mime_type": "text/plain"}
-          ]
-        }
-      ]
-    }'
-
-  # Anthropic / Claude Code + attachment
-  curl ${baseUrl}/anthropic/v1/messages \
-    -H "Content-Type: application/json" \
-    -H "x-api-key: YOUR_API_KEY" \
-    -H "anthropic-version: 2023-06-01" \
-    -d '{
-      "model": "claude-sonnet-4-6",
-      "max_tokens": 1024,
-      "messages": [
-        {
-          "role": "user",
-          "content": [
-            {"type": "text", "text": "Read the uploaded file and summarize the key points."},
-            {"type": "input_file", "file_id": "FILE_ID_FROM_UPLOAD", "filename": "context.txt", "mime_type": "text/plain"}
-          ]
-        }
-      ]
-    }'
-
-  # Gemini
-  curl ${baseUrl}/v1beta/models/qwen3.6-plus:generateContent \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer YOUR_API_KEY" \
-    -d '{
-      "contents": [{"parts": [{"text": "Hello"}]}]
-    }'
-
-  # Images
-  curl ${baseUrl}/v1/images/generations \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer YOUR_API_KEY" \
-    -d '{
-      "model": "dall-e-3",
-      "prompt": "A cyberpunk cat with neon lights, ultra realistic",
-      "n": 1,
-      "size": "1024x1024",
-      "response_format": "url"
-    }'
-
-  # Video (reserved path)
-  curl ${baseUrl}/v1/chat/completions \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer YOUR_API_KEY" \
-    -d '{
-      "model": "qwen3.6-plus",
-      "stream": false,
-      "messages": [{"role": "user", "content": "Generate a slow-motion ocean-wave video."}]
-    }'`
+  const {
+    settings,
+    maxInflight,
+    globalMaxInflight,
+    poolTarget,
+    poolTtlMin,
+    modelAliases,
+    baseUrl,
+    curlExample,
+    setMaxInflight,
+    setGlobalMaxInflight,
+    setPoolTarget,
+    setPoolTtlMin,
+    setModelAliases,
+    refreshSettings,
+    saveConcurrency,
+    savePool,
+    saveAliases,
+  } = useAdminSettings()
 
   return (
     <div className="w-full max-w-5xl mx-auto min-w-0 overflow-x-hidden space-y-6">
@@ -178,7 +31,7 @@ export default function SettingsPage() {
           <h2 className="text-2xl font-bold tracking-tight">系统设置</h2>
           <p className="text-muted-foreground">管理控制台认证与网关运行时配置。</p>
         </div>
-        <Button variant="outline" onClick={() => {fetchSettings(); toast.success("配置已刷新")}}>
+        <Button variant="outline" onClick={() => { refreshSettings(); toast.success("配置已刷新") }}>
           <RefreshCw className="mr-2 h-4 w-4" /> 刷新配置
         </Button>
       </div>
@@ -258,7 +111,7 @@ export default function SettingsPage() {
               />
             </div>
             <div className="flex justify-end">
-              <Button size="sm" onClick={handleSaveConcurrency}>保存并发设置</Button>
+              <Button size="sm" onClick={saveConcurrency}>保存并发设置</Button>
             </div>
           </div>
         </div>
@@ -302,7 +155,7 @@ export default function SettingsPage() {
               />
             </div>
             <div className="flex justify-end">
-              <Button size="sm" onClick={handleSavePool}>保存预热池设置</Button>
+              <Button size="sm" onClick={savePool}>保存预热池设置</Button>
             </div>
           </div>
         </div>
@@ -322,7 +175,7 @@ export default function SettingsPage() {
               style={{ whiteSpace: "pre", overflowX: "auto" }}
             />
             <div className="mt-4 flex justify-end">
-              <Button onClick={handleSaveAliases}>保存映射</Button>
+              <Button onClick={saveAliases}>保存映射</Button>
             </div>
           </div>
         </div>

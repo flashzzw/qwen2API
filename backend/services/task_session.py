@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.adapter.standard_request import CLAUDE_CODE_OPENAI_PROFILE, StandardRequest
-from backend.services.prompt_builder import _extract_text, _extract_user_text_only, _render_history_tool_call
+from backend.application.completions.prompt_builder import _extract_text, _extract_user_text_only, _render_history_tool_call
 
 log = logging.getLogger("qwen2api.task_session")
 

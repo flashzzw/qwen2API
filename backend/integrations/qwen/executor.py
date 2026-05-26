@@ -197,6 +197,7 @@ class QwenExecutor:
                 yield {"type": "meta", "chat_id": chat_id, "acc": acc}
                 async for evt in self.stream(acc.token, chat_id, model, content, has_custom_tools, files=files):
                     yield {"type": "event", "event": evt}
+                self.account_pool.mark_success(acc)
                 return
             except Exception:
                 self.account_pool.release(acc)
@@ -221,6 +222,7 @@ class QwenExecutor:
 
                 async for evt in self.stream(acc.token, chat_id, model, content, has_custom_tools, files=files):
                     yield {"type": "event", "event": evt}
+                self.account_pool.mark_success(acc)
                 return
 
             except Exception as e:
@@ -236,13 +238,13 @@ class QwenExecutor:
                     log.warning(f"[上游] 超时 第{attempt + 1}/{settings.MAX_RETRIES}次 账号={acc.email} 错误={e}")
                     exclude.add(acc.email)
                 elif "429" in err_msg or "rate limit" in err_msg or "too many" in err_msg:
-                    self.account_pool.mark_rate_limited(acc)
+                    self.account_pool.mark_rate_limited(acc, error_message=str(e)[:200])
                     exclude.add(acc.email)
                 elif "unauthorized" in err_msg or "401" in err_msg or "403" in err_msg:
-                    self.account_pool.mark_invalid(acc)
+                    needs_activation = "activation" in err_msg or "pending" in err_msg
+                    reason = "pending_activation" if needs_activation else "auth_error"
+                    self.account_pool.mark_invalid(acc, reason=reason, error_message=str(e)[:200])
                     exclude.add(acc.email)
-                    if "activation" in err_msg or "pending" in err_msg:
-                        acc.activation_pending = True
                     if self.auth_resolver is not None:
                         asyncio.create_task(self.auth_resolver.auto_heal_account(acc))
                 else:

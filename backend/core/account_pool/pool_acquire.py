@@ -197,11 +197,12 @@ class AccountAcquireMixin:
             pass
 
     def mark_invalid(self, acc: "Account", reason: str = "invalid", error_message: str = ""):
-        """标记账号为不可用"""
+        """标记账号为不可用：同时清掉残留的限流时间戳，避免字段语义矛盾"""
         acc.valid = False
         acc.status_code = reason or "invalid"
         acc.last_error = error_message or acc.last_error
         acc.consecutive_failures += 1
+        acc.rate_limited_until = 0.0
         if reason == "pending_activation":
             acc.activation_pending = True
         if self._sticky_email == acc.email:
@@ -209,16 +210,19 @@ class AccountAcquireMixin:
         log.warning(f"[账号] {acc.email} 已标记为不可用，状态={acc.status_code}")
 
     def mark_success(self, acc: "Account"):
-        """标记账号请求成功"""
+        """标记账号请求成功：清零失败/限流计数，并把账号恢复到 valid 语义"""
         acc.consecutive_failures = 0
         acc.rate_limit_strikes = 0
-        if acc.status_code == "rate_limited":
-            acc.status_code = "valid"
+        acc.rate_limited_until = 0.0
+        acc.last_error = ""
         if not acc.activation_pending:
             acc.valid = True
+            if acc.status_code in ("rate_limited", "invalid", "auth_error", ""):
+                acc.status_code = "valid"
 
     def mark_rate_limited(self, acc: "Account", cooldown: int | None = None, error_message: str = ""):
-        """标记账号被限流"""
+        """标记账号被限流：限流是临时性的，不能把 valid 直接置 False，否则冷却期间会被
+        持久化为 invalid 状态。仅设置冷却时间与状态码，acquire 时由 is_rate_limited 拦截。"""
         acc.rate_limit_strikes += 1
         base = cooldown if cooldown is not None else settings.RATE_LIMIT_BASE_COOLDOWN
         dynamic = min(settings.RATE_LIMIT_MAX_COOLDOWN, int(base * (2 ** max(0, acc.rate_limit_strikes - 1))))
@@ -226,6 +230,10 @@ class AccountAcquireMixin:
         acc.rate_limited_until = time.time() + dynamic
         acc.status_code = "rate_limited"
         acc.last_error = error_message or acc.last_error
+        # 之前若被错误标记为 invalid，限流是可恢复状态，先把 valid 拉回 True，
+        # 让冷却结束后 is_available 能正常通过
+        if not acc.activation_pending:
+            acc.valid = True
         if self._sticky_email == acc.email:
             self._sticky_email = None
         log.warning(f"[账号] {acc.email} 已限流冷却 {dynamic} 秒")

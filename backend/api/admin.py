@@ -17,6 +17,22 @@ def verify_admin(request: Request):
     return require_admin_token(request)
 
 
+def _apply_verify_result(pool: AccountPool, acc: Account, is_valid: bool) -> None:
+    """把主动校验的结果应用到账号状态上。
+
+    成功：调用 mark_success 完整恢复（清失败计数、清残留冷却、清 activation_pending、状态码归零）。
+    失败：仅置 valid=False 并给出语义清晰的 status_code，不调用 mark_invalid，
+          这样 consecutive_failures 不会被主动校验累计，避免一次手动验证就触发指数级冷却。
+    """
+    if is_valid:
+        acc.activation_pending = False
+        pool.mark_success(acc)
+        return
+    acc.valid = False
+    if not acc.activation_pending and acc.status_code not in ("banned", "pending_activation"):
+        acc.status_code = "auth_error"
+
+
 class AdminLoginRequest(BaseModel):
     password: str
 
@@ -224,7 +240,7 @@ async def register_new_account(request: Request):
 
 @router.post("/verify", dependencies=[Depends(verify_admin)])
 async def verify_all_accounts(request: Request):
-    """验证所有账号的有效性 (完全复原单文件逻辑)"""
+    """验证所有账号的有效性"""
     from backend.core.account_pool import AccountPool
     from backend.integrations.qwen.client import QwenClient
     import logging
@@ -236,14 +252,16 @@ async def verify_all_accounts(request: Request):
     results = []
     for acc in pool.accounts:
         is_valid = await client.verify_token(acc.token)
+        refreshed = False
         if not is_valid and acc.password:
             log.info(f"[校验] {acc.email} token失效，尝试自动刷新...")
-            is_valid = await client.auth_resolver.refresh_token(acc)
+            refreshed = await client.auth_resolver.refresh_token(acc)
+            is_valid = refreshed
 
-        acc.valid = is_valid
-        results.append({"email": acc.email, "valid": is_valid, "refreshed": not is_valid})
+        _apply_verify_result(pool, acc, is_valid)
+        results.append({"email": acc.email, "valid": is_valid, "refreshed": refreshed})
 
-    await pool.save() # 直接保存全部状态，不调用 mark_invalid 以免熔断影响测试
+    await pool.save()
     return {"ok": True, "results": results}
 
 @router.post("/accounts/{email}/activate", dependencies=[Depends(verify_admin)])
@@ -275,7 +293,7 @@ async def activate_account(email: str, request: Request):
 
 @router.post("/accounts/{email}/verify", dependencies=[Depends(verify_admin)])
 async def verify_account(email: str, request: Request):
-    """单独验证某个账号的有效性 (完全复原单文件逻辑)"""
+    """单独验证某个账号的有效性"""
     from backend.integrations.qwen.client import QwenClient
     from backend.core.account_pool import AccountPool
     import logging
@@ -293,8 +311,8 @@ async def verify_account(email: str, request: Request):
         log.info(f"[校验] {acc.email} token失效，尝试自动刷新...")
         is_valid = await client.auth_resolver.refresh_token(acc)
 
-    acc.valid = is_valid
-    await pool.save() # 直接保存，不调用 mark_invalid 以免熔断影响正常测试
+    _apply_verify_result(pool, acc, is_valid)
+    await pool.save()
 
     return {"email": acc.email, "valid": is_valid}
 

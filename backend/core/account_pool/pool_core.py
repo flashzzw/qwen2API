@@ -32,10 +32,15 @@ class Account:
         self.cookies = cookies
         self.username = username
         self.activation_pending = activation_pending
-        self.valid = not activation_pending
-        self.last_used = 0.0
+        # 优先读取持久化的 valid（区分 None 与 False，避免误把 False 当未提供）
+        persisted_valid = kwargs.get("valid")
+        if persisted_valid is None:
+            self.valid = not activation_pending
+        else:
+            self.valid = bool(persisted_valid)
+        self.last_used = float(kwargs.get("last_used", 0.0) or 0.0)
         self.inflight = 0
-        self.rate_limited_until = 0.0
+        self.rate_limited_until = float(kwargs.get("rate_limited_until", 0.0) or 0.0)
         self.healing = False
         self.status_code = status_code or ("pending_activation" if activation_pending else "valid")
         self.last_error = last_error or ""
@@ -87,8 +92,11 @@ class Account:
             "cookies": self.cookies,
             "username": self.username,
             "activation_pending": self.activation_pending,
+            "valid": self.valid,
             "status_code": self.status_code,
             "last_error": self.last_error,
+            "last_used": self.last_used,
+            "rate_limited_until": self.rate_limited_until,
             "last_request_started": self.last_request_started,
             "last_request_finished": self.last_request_finished,
             "consecutive_failures": self.consecutive_failures,

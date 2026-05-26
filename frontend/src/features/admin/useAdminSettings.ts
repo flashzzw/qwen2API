@@ -78,7 +78,7 @@ export function useAdminSettings() {
     }
   }
 
-  const baseUrl = API_BASE || `http://${window.location.hostname}:7860`
+  const baseUrl = API_BASE || window.location.origin
   const curlExample = useMemo(() => buildCurlExample(baseUrl), [baseUrl])
 
   return {

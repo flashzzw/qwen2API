@@ -1,5 +1,5 @@
 import { Button } from "../components/ui/button"
-import { Trash2, Plus, RefreshCw, Bot, ShieldCheck, MailWarning } from "lucide-react"
+import { Trash2, Plus, RefreshCw, Bot, ShieldCheck, MailWarning, KeyRound } from "lucide-react"
 import { toast } from "sonner"
 import { statusNote, statusStyle, statusText } from "../features/admin/account-status"
 import { useAccounts } from "../features/admin/useAccounts"
@@ -111,6 +111,9 @@ export default function AccountsPage() {
                         <MailWarning className="h-4 w-4 mr-1" /> {"\u6fc0\u6d3b"}
                       </Button>
                     )}
+                    <Button variant="outline" size="sm" onClick={() => accountsState.updateAccountToken(acc.email)} title={"\u66f4\u65b0 Token"}>
+                      <KeyRound className="h-4 w-4" />
+                    </Button>
                     <Button variant="outline" size="sm" onClick={() => accountsState.verifyAccount(acc.email)} disabled={accountsState.verifying === acc.email} title={"\u5355\u72ec\u9a8c\u8bc1"}>
                       {accountsState.verifying === acc.email ? <RefreshCw className="h-4 w-4 animate-spin text-blue-500" /> : <ShieldCheck className="h-4 w-4" />}
                     </Button>

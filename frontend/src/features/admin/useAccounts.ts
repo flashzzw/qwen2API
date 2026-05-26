@@ -160,6 +160,27 @@ export function useAccounts() {
       .catch(error => toast.error(error.message || "激活请求失败", { id }))
   }
 
+  const updateAccountToken = (targetEmail: string) => {
+    const input = window.prompt(`粘贴 ${targetEmail} 的新 Token（仅粘贴 Local Storage 中的原始 token，不要带 Bearer 前缀）：`, "")
+    if (input === null) return
+    const newToken = input.trim()
+    if (!newToken) {
+      toast.error("Token 不能为空")
+      return
+    }
+    const id = toast.loading(`正在更新 ${targetEmail} 的 Token...`)
+    addAdminAccount({ email: targetEmail, password: "", token: newToken })
+      .then(data => {
+        if (!data.ok) {
+          toast.error(localizeAccountError(data.error) || "更新 Token 失败", { id, duration: 8000 })
+          return
+        }
+        toast.success(`${targetEmail} 的 Token 已更新`, { id })
+        refreshAccounts()
+      })
+      .catch(error => toast.error(error.message || "更新 Token 请求失败", { id }))
+  }
+
   return {
     accounts,
     stats,
@@ -178,5 +199,6 @@ export function useAccounts() {
     verifyAccount,
     verifyAllAccounts,
     activateAccount,
+    updateAccountToken,
   }
 }

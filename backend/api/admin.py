@@ -149,20 +149,36 @@ async def add_account(request: Request):
     if not token:
         raise HTTPException(400, detail="token is required")
 
-    acc = Account(
-        email=data.get("email", f"manual_{int(time.time())}@qwen"),
-        password=data.get("password", ""),
-        token=token,
-        cookies=data.get("cookies", ""),
-        username=data.get("username", "")
-    )
+    email = data.get("email") or f"manual_{int(time.time())}@qwen"
+    existing = pool.get_by_email(email)
+
+    password = data.get("password")
+    if password is None or password == "":
+        password = existing.password if existing else ""
+    username = data.get("username")
+    if username is None or username == "":
+        username = existing.username if existing else ""
+    cookies = data.get("cookies")
+    if cookies is None or cookies == "":
+        cookies = existing.cookies if existing else ""
 
     is_valid = await client.verify_token(token)
     if not is_valid:
-        return {"ok": False, "error": "Invalid token (验证失败，请确认Token有效)"}
+        return {
+            "ok": False,
+            "error": "Invalid token (验证失败，请确认Token有效)",
+            "updated": False,
+        }
 
+    acc = Account(
+        email=email,
+        password=password,
+        token=token,
+        cookies=cookies,
+        username=username,
+    )
     await pool.add(acc)
-    return {"ok": True, "email": acc.email}
+    return {"ok": True, "email": acc.email, "updated": existing is not None}
 
 
 @router.get("/accounts", dependencies=[Depends(verify_admin)])
